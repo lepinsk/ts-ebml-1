@@ -37,8 +37,8 @@ async function main_from_file(file: string) {
   reader.stop();
   const refinedMetadataBuf = tools.makeMetadataSeekable(reader.metadatas, reader.duration, reader.cues);
   const body = webMBuf.slice(reader.metadataSize);
-  const refinedWebM = new Blob([refinedMetadataBuf, body], {type: "video/webm"});
-  const refined_video = document.createElement("video");
+  const refinedWebM = new Blob([refinedMetadataBuf, body], {type: "audio/webm"});
+  const refined_video = document.createElement("audio");
   refined_video.src = URL.createObjectURL(refinedWebM);
   refined_video.controls = true;
   document.body.appendChild(refined_video);
@@ -57,23 +57,24 @@ async function main_from_file(file: string) {
 async function main_from_recorder(duration: number, codec: string) {
   const decoder = new Decoder();
   const reader = new Reader();
-  reader.logging = true;
+  reader.logging = false;
   reader.logGroup = "Raw WebM Stream (not seekable)";
+  var lastDurationValue;
 
   let tasks: Promise<void> = Promise.resolve(void 0);
-  let webM = new Blob([], {type: "video/webm"});
+  let webM = new Blob([], {type: "audio/webm"});
 
   const devices = await navigator.mediaDevices.enumerateDevices();
   console.table(devices);
 
   const stream: MediaStream = await (
-    navigator.mediaDevices.getUserMedia instanceof Function ? navigator.mediaDevices.getUserMedia({video: true, audio: true}) :
-    navigator.getUserMedia instanceof Function ? new Promise<MediaStream>((resolve, reject)=> navigator.getUserMedia({video: true, audio: true}, resolve, reject)) :
-    navigator["webkitGetUserMedia"] instanceof Function ? new Promise<MediaStream>((resolve, reject)=> navigator["webkitGetUserMedia"]({video: true, audio: true}, resolve, reject)) :
+    navigator.mediaDevices.getUserMedia instanceof Function ? navigator.mediaDevices.getUserMedia({video: false, audio: true}) :
+    navigator.getUserMedia instanceof Function ? new Promise<MediaStream>((resolve, reject)=> navigator.getUserMedia({video: false, audio: true}, resolve, reject)) :
+    navigator["webkitGetUserMedia"] instanceof Function ? new Promise<MediaStream>((resolve, reject)=> navigator["webkitGetUserMedia"]({video: false, audio: true}, resolve, reject)) :
     Promise.reject<MediaStream>(new Error("cannot use usermedia"))
   );
 
-  const rec = new MediaRecorder(stream, { mimeType: `video/webm; codecs="${codec}, opus"`});
+  const rec = new MediaRecorder(stream, { audioBitsPerSecond : 96000, mimeType: "audio/webm;codecs=opus"});
 
   const ondataavailable = (ev: BlobEvent)=>{
     const chunk = ev.data;
@@ -83,6 +84,11 @@ async function main_from_recorder(duration: number, codec: string) {
       const elms = decoder.decode(buf);
       elms.forEach((elm)=>{ reader.read(elm); });
     };
+    console.log("reader.duration=" + reader.duration);
+    if (lastDurationValue && reader.duration < lastDurationValue) {
+      console.log("*** WARNING, LAST DURATION VALUE WAS " + lastDurationValue + ", reader.duration has reduced");
+    }
+    lastDurationValue = reader.duration;
     tasks = tasks.then(()=> task() );
   };
 
@@ -90,7 +96,7 @@ async function main_from_recorder(duration: number, codec: string) {
 
   // if set timeslice, bug occur on firefox: https://bugzilla.mozilla.org/show_bug.cgi?id=1272371
   // rec.start(100);
-  rec.start();
+  rec.start(5000);
 
   await sleep(duration * 1000);
 
@@ -113,7 +119,7 @@ async function main_from_recorder(duration: number, codec: string) {
   reader.stop();
   
 
-  const raw_video = document.createElement("video");
+  const raw_video = document.createElement("audio");
   raw_video.src = URL.createObjectURL(webM);
   raw_video.controls = true;
 
@@ -143,7 +149,7 @@ async function main_from_recorder(duration: number, codec: string) {
     new Decoder().decode(refinedBuf).forEach((elm)=> _reader.read(elm) );
     _reader.stop();
 
-    const refined_video = document.createElement("video");
+    const refined_video = document.createElement("audio");
     refined_video.src = URL.createObjectURL(refinedWebM);
     refined_video.controls = true;
     const refinedVideoButton = document.createElement("button");
